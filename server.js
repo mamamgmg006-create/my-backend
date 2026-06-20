@@ -1,6 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const fs = require('fs'); // ဖိုင်ထဲမှာ ဒေတာအသေသိမ်းရန် စနစ်သုံးထားသည်
 
 const app = express();
 
@@ -14,14 +15,34 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.options('*', cors());
 
-// စမ်းသပ်ရန်အတွက် ယာယီ ဒေတာဘေ့စ်
-let usersDatabase = [];
-
-// ပင်မ ဖိတ်ခေါ်ကုဒ်
+const DATA_FILE = './users.json';
 const MAIN_INVITE_CODE = 'ZG73223';
 
+// ဒေတာဖတ်ခြင်းနှင့် သိမ်းဆည်းခြင်း လုပ်ဆောင်ချက်များ
+function readDatabase() {
+    try {
+        if (!fs.existsSync(DATA_FILE)) {
+            fs.writeFileSync(DATA_FILE, JSON.stringify([]));
+            return [];
+        }
+        const data = fs.readFileSync(DATA_FILE, 'utf8');
+        return JSON.stringify(data) === '{}' || !data ? [] : JSON.parse(data);
+    } catch (error) {
+        console.error("Database read error:", error);
+        return [];
+    }
+}
+
+function writeDatabase(data) {
+    try {
+        fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+    } catch (error) {
+        console.error("Database write error:", error);
+    }
+}
+
 app.get('/', (req, res) => {
-    res.send("Server is running perfectly!");
+    res.send("Server is running perfectly with permanent file storage!");
 });
 
 // === REGISTER ENDPOINT ===
@@ -36,42 +57,44 @@ app.post('/api/register', (req, res) => {
         return res.status(400).json({ success: false, message: "Passwords do not match!" });
     }
 
-    // ၁။ ဝင်လာသော ဖိတ်ခေါ်ကုဒ်သည် ပင်မကုဒ် (ZG73223) ဟုတ်မဟုတ် စစ်ဆေးသည်
-    const isMainCode = (inviteCode === MAIN_INVITE_CODE);
-    
-    // ၂။ သို့မဟုတ် တခြား User တွေရဲ့ ကိုယ်ပိုင်ကုဒ် ဟုတ်မဟုတ် စစ်ဆေးသည်
-    const isUserCode = usersDatabase.some(user => user.userInviteCode === inviteCode);
+    const db = readDatabase();
 
-    // ကုဒ်နှစ်ခုလုံး မဟုတ်ပါက ပယ်ချမည်
+    // ဖိတ်ခေါ်ကုဒ် မှန်မမှန် စစ်ဆေးခြင်း
+    const isMainCode = (inviteCode === MAIN_INVITE_CODE);
+    const isUserCode = db.some(user => user.userInviteCode === inviteCode);
+
     if (!isMainCode && !isUserCode) {
         return res.status(400).json({ success: false, message: "Registration Failed: Invalid Invitation Code!" });
     }
 
     // Username ထပ်မထပ် စစ်ဆေးခြင်း
-    const userExists = usersDatabase.find(user => user.username === username);
+    const userExists = db.find(user => user.username === username || user.contact === contact);
     if (userExists) {
-        return res.status(400).json({ success: false, message: "Username already exists!" });
+        return res.status(400).json({ success: false, message: "Username or Contact already exists!" });
     }
 
-    // === ကျပန်း ဂဏန်း ၆ လုံး ဖိတ်ခေါ်ကုဒ် ထုတ်ပေးခြင်း (မထပ်စေရန် စစ်ဆေးပြီးမှ ထုတ်ပေးသည်) ===
+    // ကျပန်း ဂဏန်း ၆ လုံး ဖိတ်ခေါ်ကုဒ် ထုတ်ပေးခြင်း
     let generatedCode;
     let isDuplicate = true;
     while (isDuplicate) {
-        generatedCode = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit string
-        isDuplicate = usersDatabase.some(user => user.userInviteCode === generatedCode);
+        generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
+        isDuplicate = db.some(user => user.userInviteCode === generatedCode);
     }
 
-    // ဒေတာအသစ် သိမ်းဆည်းခြင်း (စကတည်းက $10.00 ပေးထားမည်)
-    usersDatabase.push({ 
+    // User သစ်ကို အမြဲတမ်း ဖိုင်ထဲသို့ သိမ်းဆည်းခြင်း
+    const newUser = { 
         username: username, 
         contact: contact, 
         password: password, 
-        userInviteCode: generatedCode, // ကိုယ်ပိုင် ၆ လုံးကုဒ်
+        userInviteCode: generatedCode,
         balance: 10.00 
-    });
+    };
     
-    console.log("Updated Database:", usersDatabase);
-    return res.json({ success: true, message: "Registration successful!" });
+    db.push(newUser);
+    writeDatabase(db);
+    
+    console.log("Registered successfully:", username, "Code:", generatedCode);
+    return res.json({ success: true, message: "Registration successful! Please login." });
 });
 
 // === LOGIN ENDPOINT ===
@@ -82,18 +105,20 @@ app.post('/api/login', (req, res) => {
         return res.status(400).json({ success: false, message: "Missing username or password!" });
     }
 
-    // Username သို့မဟုတ် ဖုန်း/အီးမေးလ်ဖြင့် ရှာဖွေခြင်း
-    const user = usersDatabase.find(u => (u.username === username || u.contact === username) && u.password === password);
+    const db = readDatabase();
+    
+    // အကောင့်ကို ရှာဖွေခြင်း
+    const user = db.find(u => (u.username === username || u.contact === username) && u.password === password);
 
     if (user) {
-        // Frontend Profile ဆီသို့ အချက်အလက်များ လွှဲပြောင်းပေးပို့ခြင်း
+        // ဒေတာအမှန်များကို လုံးဝ အပြည့်အစုံ ဖော်ပြပေးရန် ပို့ပေးခြင်း
         return res.json({ 
             success: true, 
             message: `Welcome back, ${user.username}!`,
             username: user.username,
-            contact: user.contact, // ဒေတာအမှန် ပြန်ပို့ပေးရန်
+            contact: user.contact,
             balance: user.balance,
-            userInviteCode: user.userInviteCode // ကိုယ်ပိုင် ၆ လုံးကုဒ် ပြန်ပို့ပေးရန်
+            userInviteCode: user.userInviteCode
         });
     } else {
         return res.status(400).json({ success: false, message: "Invalid username or password!" });
