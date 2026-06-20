@@ -3,19 +3,31 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 
 const app = express();
-const PORT = 3000;
 
-app.use(cors());
+// လုံးဝ အမှားမတက်စေရန် CORS စနစ်ကို သေသေချာချာ ခွင့်ပြုပေးခြင်း
+app.use(cors({
+    origin: '*', // ဘယ် Website ကမဆို လှမ်းပို့တာကို လက်ခံမည်
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// Pre-flight requests (OPTIONS) ကို အလိုအလျောက် အောင်မြင်အောင် လုပ်ပေးခြင်း
+app.options('*', cors());
+
 let usersDatabase = [];
+
+// Base Route (Server အလုပ်လုပ်၊ မလုပ် စမ်းသပ်ရန်)
+app.get('/', (req, res) => {
+    res.send("Server is running perfectly!");
+});
 
 // Register Endpoint
 app.post('/api/register', (req, res) => {
     const { username, contact, password, confirmPassword, inviteCode } = req.body;
 
-    // အချက်အလက်များ မပါလာပါက တားဆီးရန်
     if (!username || !contact || !password) {
         return res.status(400).json({ success: false, message: "Missing required fields!" });
     }
@@ -52,9 +64,7 @@ app.post('/api/login', (req, res) => {
     }
 });
 
-// ပုံသေ 3000 အစား Render ပေးမယ့် Port သို့မဟုတ် 3000 ဟု ပြောင်းလဲခြင်း
 const port = process.env.PORT || 3000;
-
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
 });
