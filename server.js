@@ -24,46 +24,29 @@ app.get('/', (req, res) => {
     res.send("Server is running perfectly!");
 });
 
-// Register Endpoint
+// Register Endpoint အပိုင်းကို ဤသို့ပြင်ပါ (အစပိုင်းတွင် $10.00 Bonus ပေးရန်)
 app.post('/api/register', (req, res) => {
     const { username, contact, password, confirmPassword, inviteCode } = req.body;
+    // ... (ရှိပြီးသား validation များအတိုင်းထားပါ) ...
 
-    if (!username || !contact || !password) {
-        return res.status(400).json({ success: false, message: "Missing required fields!" });
-    }
-
-    if (password !== confirmPassword) {
-        return res.status(400).json({ success: false, message: "Passwords do not match!" });
-    }
-
-    const userExists = usersDatabase.find(user => user.username === username);
-    if (userExists) {
-        return res.status(400).json({ success: false, message: "Username already exists!" });
-    }
-
-    usersDatabase.push({ username, contact, password, inviteCode });
-    console.log("Updated Database:", usersDatabase);
-    
+    // ဒေတာအသစ်ထဲတွင် $10.00 လက်ဆောင် ထည့်ပေးလိုက်ခြင်း
+    usersDatabase.push({ username, contact, password, inviteCode, balance: 10.00 });
     return res.json({ success: true, message: "Registration successful!" });
 });
 
-// Login Endpoint နေရာတွင် ဒါမျိုး အစားထိုးပါ
+// Login Endpoint အပိုင်းကို ဤသို့ပြင်ပါ (Contact နှင့် Balance များကို အင်္ဂလိပ်လို ပြန်ပို့ပေးရန်)
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
-
-    if (!username || !password) {
-        return res.status(400).json({ success: false, message: "Missing username or password!" });
-    }
 
     const user = usersDatabase.find(u => (u.username === username || u.contact === username) && u.password === password);
 
     if (user) {
-        // အောင်မြင်လျှင် သုံးစွဲသူအမည်နှင့် လက်ကျန်ငွေ (ဥပမာ - ၁၀၀၀) ကိုပါ တစ်ပါတည်း ပို့ပေးခြင်း
         return res.json({ 
             success: true, 
             message: `Welcome back, ${user.username}!`,
             username: user.username,
-            balance: user.balance || 1000 // မူလအစတွင် ၁၀၀၀ ကျပ် လက်ဆောင်ပေးထားခြင်း
+            contact: user.contact, // Frontend Profile တွင် ပြသရန်အတွက်ဖြစ်သည်
+            balance: user.balance || 10.00 // Dollar စနစ် လက်ကျန်ငွေ
         });
     } else {
         return res.status(400).json({ success: false, message: "Invalid username or password!" });
