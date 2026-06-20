@@ -47,7 +47,7 @@ app.post('/api/register', (req, res) => {
     return res.json({ success: true, message: "Registration successful!" });
 });
 
-// Login Endpoint
+// Login Endpoint နေရာတွင် ဒါမျိုး အစားထိုးပါ
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
 
@@ -58,13 +58,14 @@ app.post('/api/login', (req, res) => {
     const user = usersDatabase.find(u => (u.username === username || u.contact === username) && u.password === password);
 
     if (user) {
-        return res.json({ success: true, message: `Welcome back, ${user.username}!` });
+        // အောင်မြင်လျှင် သုံးစွဲသူအမည်နှင့် လက်ကျန်ငွေ (ဥပမာ - ၁၀၀၀) ကိုပါ တစ်ပါတည်း ပို့ပေးခြင်း
+        return res.json({ 
+            success: true, 
+            message: `Welcome back, ${user.username}!`,
+            username: user.username,
+            balance: user.balance || 1000 // မူလအစတွင် ၁၀၀၀ ကျပ် လက်ဆောင်ပေးထားခြင်း
+        });
     } else {
         return res.status(400).json({ success: false, message: "Invalid username or password!" });
     }
-});
-
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
 });
