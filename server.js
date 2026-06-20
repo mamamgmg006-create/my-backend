@@ -1,7 +1,7 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const fs = require('fs');
 
 const app = express();
 
@@ -14,105 +14,103 @@ app.use(cors({
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Cloud MongoDB Connection
-const MONGO_URI = "mongodb+srv://tiktokuser:tiktokpass123@cluster0.v8jzk.mongodb.net/tiktokPlatform?retryWrites=true&w=majority";
-
-mongoose.connect(MONGO_URI)
-    .then(() => console.log("🔥 Connected to cloud MongoDB!"))
-    .catch(err => console.error("❌ MongoDB error:", err));
-
-// Database Schema (နာမည်ကို inviteCode ဟုပဲ ပုံသေပြောင်းလဲလိုက်သည်)
-const userSchema = new mongoose.Schema({
-    username: { type: String, required: true, unique: true },
-    contact: { type: String, required: true },
-    password: { type: String, required: true },
-    inviteCode: { type: String, required: true, unique: true }, // နာမည်ညှိလိုက်သည်
-    balance: { type: Number, default: 10.00 }
-});
-
-const User = mongoose.model('User', userSchema);
+const DATA_FILE = './users.json';
 const MAIN_INVITE_CODE = 'ZG73223';
 
+// ဒေတာဘေ့စ် ဖတ်/ရေး စနစ်
+function readDatabase() {
+    try {
+        if (!fs.existsSync(DATA_FILE)) {
+            fs.writeFileSync(DATA_FILE, JSON.stringify([]));
+            return [];
+        }
+        const data = fs.readFileSync(DATA_FILE, 'utf8');
+        return data ? JSON.parse(data) : [];
+    } catch (error) {
+        return [];
+    }
+}
+
+function writeDatabase(data) {
+    try {
+        fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+    } catch (error) {
+        console.error("Write error:", error);
+    }
+}
+
 app.get('/', (req, res) => {
-    res.send("Server is running perfectly on Cloud DB!");
+    res.send("Server is running smoothly!");
 });
 
 // === REGISTER ENDPOINT ===
-app.post('/api/register', async (req, res) => {
-    try {
-        const { username, contact, password, confirmPassword, inviteCode } = req.body;
+app.post('/api/register', (req, res) => {
+    const { username, contact, password, confirmPassword, inviteCode } = req.body;
 
-        if (!username || !contact || !password || !inviteCode) {
-            return res.status(400).json({ success: false, message: "Missing required fields!" });
-        }
-
-        if (password !== confirmPassword) {
-            return res.status(400).json({ success: false, message: "Passwords do not match!" });
-        }
-
-        // ဖိတ်ခေါ်ကုဒ် မှန်၊ မမှန် စစ်ဆေးခြင်း
-        const isMainCode = (inviteCode === MAIN_INVITE_CODE);
-        const inviteCodeExists = await User.findOne({ inviteCode: inviteCode });
-
-        if (!isMainCode && !inviteCodeExists) {
-            return res.status(400).json({ success: false, message: "Registration Failed: Invalid Invitation Code!" });
-        }
-
-        const userExists = await User.findOne({ username });
-        if (userExists) {
-            return res.status(400).json({ success: false, message: "Username already exists!" });
-        }
-
-        // === ကျပန်း ဂဏန်း ၆ လုံး ထုတ်ပေးခြင်း ===
-        let generatedCode;
-        let isDuplicate = true;
-        while (isDuplicate) {
-            generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
-            const codeCheck = await User.findOne({ inviteCode: generatedCode });
-            if (!codeCheck) isDuplicate = false;
-        }
-
-        // အချက်အလက်အသစ်အား သိမ်းဆည်းခြင်း
-        const newUser = new User({
-            username,
-            contact,
-            password,
-            inviteCode: generatedCode, // ဂဏန်း ၆ လုံးကုဒ်အသစ်အား ထည့်သွင်းသိမ်းဆည်းသည်
-            balance: 10.00
-        });
-
-        await newUser.save();
-        return res.json({ success: true, message: "Registration successful! Please login." });
-
-    } catch (error) {
-        return res.status(500).json({ success: false, message: "Server Error!" });
+    if (!username || !contact || !password || !inviteCode) {
+        return res.status(400).json({ success: false, message: "Missing required fields!" });
     }
+
+    if (password !== confirmPassword) {
+        return res.status(400).json({ success: false, message: "Passwords do not match!" });
+    }
+
+    const db = readDatabase();
+    const isMainCode = (inviteCode === MAIN_INVITE_CODE);
+    const isUserCode = db.some(user => user.myGeneratedCode === inviteCode);
+
+    if (!isMainCode && !isUserCode) {
+        return res.status(400).json({ success: false, message: "Registration Failed: Invalid Invitation Code!" });
+    }
+
+    const userExists = db.find(user => user.username === username);
+    if (userExists) {
+        return res.status(400).json({ success: false, message: "Username already exists!" });
+    }
+
+    // === ကျပန်း ဂဏန်း ၆ လုံး ထုတ်ပေးခြင်း စနစ်စစ်စစ် ===
+    let generatedCode;
+    let isDuplicate = true;
+    while (isDuplicate) {
+        generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
+        isDuplicate = db.some(user => user.myGeneratedCode === generatedCode);
+    }
+
+    // ဒေတာအချက်အလက်များကို ပုံသေသိမ်းဆည်းခြင်း
+    const newUser = { 
+        username, 
+        contact, 
+        password, 
+        myGeneratedCode: generatedCode, // ဂဏန်း ၆ လုံး ကုဒ်သစ်
+        balance: 10.00 
+    };
+    
+    db.push(newUser);
+    writeDatabase(db);
+    
+    console.log("Updated Database: ", db); // Render Logs တွင် ကြည့်ရန်
+    return res.json({ success: true, message: "Registration successful! Please login." });
 });
 
 // === LOGIN ENDPOINT ===
-app.post('/api/login', async (req, res) => {
-    try {
-        const { username, password } = req.body;
+app.post('/api/login', (req, res) => {
+    const { username, password } = req.body;
+    const db = readDatabase();
+    
+    const user = db.find(u => (u.username === username || u.contact === username) && u.password === password);
 
-        const user = await User.findOne({
-            $or: [{ username: username }, { contact: username }],
-            password: password
+    if (user) {
+        // အလွန်အရေးကြီးသည်- ဒေတာများကို Frontend ဆီသို့ ကွက်တိ ပြန်ပို့ပေးခြင်း
+        return res.json({ 
+            success: true, 
+            message: `Welcome back, ${user.username}!`,
+            username: user.username,
+            contact: user.contact,
+            balance: user.balance,
+            myGeneratedCode: user.myGeneratedCode // ဤနေရာမှတစ်ဆင့် Frontend သို့ ပို့ပေးသည်
         });
-
-        if (user) {
-            return res.json({
-                success: true,
-                message: `Welcome back!`,
-                username: user.username,
-                contact: user.contact,
-                balance: user.balance,
-                inviteCode: user.inviteCode // Frontend ဆီသို့ ပို့ပေးခြင်း
-            });
-        } else {
-            return res.status(400).json({ success: false, message: "Invalid username or password!" });
-        }
-    } catch (error) {
-        return res.status(500).json({ success: false, message: "Server Error!" });
+    } else {
+        return res.status(400).json({ success: false, message: "Invalid username or password!" });
     }
 });
 
