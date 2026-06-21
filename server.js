@@ -5,25 +5,16 @@ const fs = require('fs');
 
 const app = express();
 
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
+app.use(cors({ origin: '*' }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 const DATA_FILE = './users.json';
 const MAIN_INVITE_CODE = 'ZG73223';
 
-// ဒေတာဘေ့စ် ဖတ်/ရေး စနစ်
 function readDatabase() {
     try {
-        if (!fs.existsSync(DATA_FILE)) {
-            fs.writeFileSync(DATA_FILE, JSON.stringify([]));
-            return [];
-        }
+        if (!fs.existsSync(DATA_FILE)) return [];
         const data = fs.readFileSync(DATA_FILE, 'utf8');
         return data ? JSON.parse(data) : [];
     } catch (error) {
@@ -35,20 +26,20 @@ function writeDatabase(data) {
     try {
         fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
     } catch (error) {
-        console.error("Write error:", error);
+        console.error(error);
     }
 }
 
 app.get('/', (req, res) => {
-    res.send("Server is running smoothly!");
+    res.send("Server is running perfectly!");
 });
 
-// === REGISTER ENDPOINT ===
+// === REGISTER ===
 app.post('/api/register', (req, res) => {
     const { username, contact, password, confirmPassword, inviteCode } = req.body;
 
     if (!username || !contact || !password || !inviteCode) {
-        return res.status(400).json({ success: false, message: "Missing required fields!" });
+        return res.status(400).json({ success: false, message: "Missing fields!" });
     }
 
     if (password !== confirmPassword) {
@@ -57,10 +48,10 @@ app.post('/api/register', (req, res) => {
 
     const db = readDatabase();
     const isMainCode = (inviteCode === MAIN_INVITE_CODE);
-    const isUserCode = db.some(user => user.myGeneratedCode === inviteCode);
+    const isUserCode = db.some(user => user.myInviteCode === inviteCode);
 
     if (!isMainCode && !isUserCode) {
-        return res.status(400).json({ success: false, message: "Registration Failed: Invalid Invitation Code!" });
+        return res.status(400).json({ success: false, message: "Invalid Invitation Code!" });
     }
 
     const userExists = db.find(user => user.username === username);
@@ -68,31 +59,29 @@ app.post('/api/register', (req, res) => {
         return res.status(400).json({ success: false, message: "Username already exists!" });
     }
 
-    // === ကျပန်း ဂဏန်း ၆ လုံး ထုတ်ပေးခြင်း စနစ်စစ်စစ် ===
+    // ကျပန်း ဂဏန်း ၆ လုံး ထုတ်ပေးခြင်း
     let generatedCode;
     let isDuplicate = true;
     while (isDuplicate) {
         generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
-        isDuplicate = db.some(user => user.myGeneratedCode === generatedCode);
+        isDuplicate = db.some(user => user.myInviteCode === generatedCode);
     }
 
-    // ဒေတာအချက်အလက်များကို ပုံသေသိမ်းဆည်းခြင်း
+    // တည်ဆောက်ပုံ Format ကို အသေ သတ်မှတ်ခြင်း
     const newUser = { 
         username, 
         contact, 
         password, 
-        myGeneratedCode: generatedCode, // ဂဏန်း ၆ လုံး ကုဒ်သစ်
+        myInviteCode: generatedCode, 
         balance: 10.00 
     };
     
     db.push(newUser);
     writeDatabase(db);
-    
-    console.log("Updated Database: ", db); // Render Logs တွင် ကြည့်ရန်
-    return res.json({ success: true, message: "Registration successful! Please login." });
+    return res.json({ success: true, message: "Registration successful!" });
 });
 
-// === LOGIN ENDPOINT ===
+// === LOGIN ===
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
     const db = readDatabase();
@@ -100,14 +89,14 @@ app.post('/api/login', (req, res) => {
     const user = db.find(u => (u.username === username || u.contact === username) && u.password === password);
 
     if (user) {
-        // အလွန်အရေးကြီးသည်- ဒေတာများကို Frontend ဆီသို့ ကွက်တိ ပြန်ပို့ပေးခြင်း
+        // ဒေတာအမှန်များကို ကွက်တိ ပြန်ပေးလိုက်ခြင်း
         return res.json({ 
             success: true, 
             message: `Welcome back, ${user.username}!`,
             username: user.username,
             contact: user.contact,
             balance: user.balance,
-            myGeneratedCode: user.myGeneratedCode // ဤနေရာမှတစ်ဆင့် Frontend သို့ ပို့ပေးသည်
+            myInviteCode: user.myInviteCode
         });
     } else {
         return res.status(400).json({ success: false, message: "Invalid username or password!" });
@@ -115,6 +104,4 @@ app.post('/api/login', (req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-});
+app.listen(port, () => console.log(`Running on port ${port}`));
